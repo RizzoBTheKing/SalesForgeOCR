@@ -1,0 +1,1 @@
+Core project: domain entities, interfaces, and contracts.

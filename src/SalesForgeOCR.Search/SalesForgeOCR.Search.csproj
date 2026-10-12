@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+	<TargetFramework>net9.0</TargetFramework>
+	<ImplicitUsings>enable</ImplicitUsings>
+	<Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+	<ProjectReference Include="..\SalesForgeOCR.Core\SalesForgeOCR.Core.csproj" />
+	<ProjectReference Include="..\SalesForgeOCR.Data\SalesForgeOCR.Data.csproj" />
+	<ProjectReference Include="..\SalesForgeOCR.Shared\SalesForgeOCR.Shared.csproj" />
+  </ItemGroup>
+</Project>
