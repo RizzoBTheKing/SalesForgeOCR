@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using SalesForgeOCR.Core.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,15 +22,17 @@ namespace SalesForgeOCR.UI.Forms
             Controls.Add(_btnRefresh);
 
             _lstDocs = new ListBox { Dock = DockStyle.Fill, DisplayMember = "FileName" };
+            VisibleChanged += async (s, e) => { if (Visible) await LoadDocsAsync(); };
             _lstDocs.DoubleClick += LstDocs_DoubleClick;
             Controls.Add(_lstDocs);
+            _lstDocs.BringToFront();
         }
 
         private async void LstDocs_DoubleClick(object? sender, EventArgs e)
         {
             if (_lstDocs.SelectedItem is SalesForgeOCR.Core.Entities.Document doc)
             {
-                var viewer = (SalesForgeOCR.UI.Forms.DocumentViewerForm)Program.Host.Services.GetService(typeof(SalesForgeOCR.UI.Forms.DocumentViewerForm));
+                var viewer = Program.Host.Services.GetRequiredService<SalesForgeOCR.UI.Forms.DocumentViewerForm>();
                 if (viewer != null)
                 {
                     // show viewer dialog with document id

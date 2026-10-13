@@ -11,6 +11,7 @@ namespace SalesForgeOCR.Security
 
         public static string Hash(string password)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(password);
             using var rng = RandomNumberGenerator.Create();
             var salt = new byte[SaltSize];
             rng.GetBytes(salt);
@@ -28,7 +29,7 @@ namespace SalesForgeOCR.Security
             try
             {
                 var parts = Convert.FromBase64String(hashed);
-                if (parts[0] != 1) return false;
+                if (parts.Length != 1 + SaltSize + KeySize || parts[0] != 1) return false;
                 var salt = new byte[SaltSize];
                 Buffer.BlockCopy(parts, 1, salt, 0, SaltSize);
                 var key = new byte[KeySize];

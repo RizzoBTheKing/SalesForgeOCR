@@ -8,4 +8,5 @@
 	<ProjectReference Include="..\SalesForgeOCR.Core\SalesForgeOCR.Core.csproj" />
 	<ProjectReference Include="..\SalesForgeOCR.Shared\SalesForgeOCR.Shared.csproj" />
   </ItemGroup>
+<ItemGroup><ProjectReference Include="../SalesForgeOCR.Data/SalesForgeOCR.Data.csproj" /></ItemGroup>
 </Project>

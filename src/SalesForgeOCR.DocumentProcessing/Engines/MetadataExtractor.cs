@@ -11,6 +11,7 @@ namespace SalesForgeOCR.DocumentProcessing.Engines
     {
         public async Task<IEnumerable<(string key, string value)>> ExtractMetadataAsync(string documentPath, CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var list = new List<(string, string)>();
             try
             {
@@ -28,10 +29,8 @@ namespace SalesForgeOCR.DocumentProcessing.Engines
                     if (!string.IsNullOrWhiteSpace(info.Author)) list.Add(("Author", info.Author));
                 }
             }
-            catch
-            {
-                // ignore
-            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception error) { throw new InvalidOperationException("Metadata extraction failed.", error); }
             return list;
         }
     }

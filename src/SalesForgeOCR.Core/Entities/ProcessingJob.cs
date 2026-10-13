@@ -32,7 +32,7 @@ namespace SalesForgeOCR.Core.Entities
             Attempt = 0;
         }
 
-        public void MarkInProgress() { Status = ProcessingStatus.InProgress; StartedAt = DateTime.UtcNow; }
+        public void MarkInProgress() { Status = ProcessingStatus.InProgress; StartedAt = DateTime.UtcNow; Attempt++; ErrorMessage = null; CompletedAt = null; }
         public void MarkCompleted() { Status = ProcessingStatus.Completed; CompletedAt = DateTime.UtcNow; }
         public void MarkFailed(string error)
         {

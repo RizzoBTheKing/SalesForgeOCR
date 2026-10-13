@@ -19,8 +19,7 @@ namespace SalesForgeOCR.DocumentProcessing.Engines
                 var page = 1;
                 foreach (var ws in wb.Worksheets)
                 {
-                    using var ms = new MemoryStream();
-                    ws.SaveAs(ms);
+
                     // Simple HTML conversion
                     var html = new System.Text.StringBuilder();
                     html.AppendLine("<table>");

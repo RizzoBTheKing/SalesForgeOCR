@@ -28,7 +28,7 @@ namespace SalesForgeOCR.DocumentProcessing.Processing.Stages
                         Type = type,
                         Value = value,
                         Confidence = confidence,
-                        PageNumber = page
+                        PageNumber = text.PageNumber
                     });
                 }
             }

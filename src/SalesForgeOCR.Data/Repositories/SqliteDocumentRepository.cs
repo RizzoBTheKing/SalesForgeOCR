@@ -19,8 +19,8 @@ namespace SalesForgeOCR.Data.Repositories
 
         public async Task InitializeAsync(CancellationToken cancellationToken = default)
         {
-            // DatabaseInitializer handles creation; ensure file exists
-            await Task.CompletedTask;
+            cancellationToken.ThrowIfCancellationRequested();
+            await new SalesForgeOCR.Data.DatabaseInitializer(_dbPath).InitializeAsync();
         }
 
         public async Task AddDocumentAsync(Document doc, CancellationToken cancellationToken = default)
@@ -55,7 +55,7 @@ namespace SalesForgeOCR.Data.Repositories
                     FileName = reader.GetString(1),
                     Size = reader.GetInt64(2),
                     CreatedAt = DateTime.Parse(reader.GetString(3)),
-                    CurrentVersionId = string.IsNullOrWhiteSpace(reader.GetString(4)) ? (Guid?)null : Guid.Parse(reader.GetString(4))
+                    CurrentVersionId = (reader.IsDBNull(4) || string.IsNullOrWhiteSpace(reader.GetString(4))) ? (Guid?)null : Guid.Parse(reader.GetString(4))
                 };
             }
             return null;
@@ -68,8 +68,9 @@ namespace SalesForgeOCR.Data.Repositories
             await using var conn = new SqliteConnection(connStr);
             await conn.OpenAsync(cancellationToken);
             var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT d.Id, d.FileName, d.Size, d.CreatedAt, d.CurrentVersionId FROM Documents d JOIN DocumentTextFTS f ON f.DocumentId = d.Id WHERE f.Content MATCH $q LIMIT 100";
-            cmd.Parameters.AddWithValue("$q", query + "*");
+            cmd.CommandText = "SELECT DISTINCT d.Id, d.FileName, d.Size, d.CreatedAt, d.CurrentVersionId FROM Documents d JOIN DocumentTextFTS f ON f.DocumentId = d.Id WHERE f.Content MATCH $q LIMIT 100";
+            cmd.Parameters.AddWithValue("$q", "\"" + query.Replace("\"", "\"\"") + "\"*");
+            if (string.IsNullOrWhiteSpace(query)) cmd.CommandText = "SELECT Id, FileName, Size, CreatedAt, CurrentVersionId FROM Documents ORDER BY CreatedAt DESC LIMIT 1000";
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
@@ -79,7 +80,7 @@ namespace SalesForgeOCR.Data.Repositories
                     FileName = reader.GetString(1),
                     Size = reader.GetInt64(2),
                     CreatedAt = DateTime.Parse(reader.GetString(3)),
-                    CurrentVersionId = string.IsNullOrWhiteSpace(reader.GetString(4)) ? (Guid?)null : Guid.Parse(reader.GetString(4))
+                    CurrentVersionId = (reader.IsDBNull(4) || string.IsNullOrWhiteSpace(reader.GetString(4))) ? (Guid?)null : Guid.Parse(reader.GetString(4))
                 });
             }
             return results;
@@ -91,7 +92,7 @@ namespace SalesForgeOCR.Data.Repositories
             await using var conn = new SqliteConnection(connStr);
             await conn.OpenAsync(cancellationToken);
             var cmd = conn.CreateCommand();
-            cmd.CommandText = "INSERT INTO DocumentVersions (Id, DocumentId, VersionNumber, FileName, Size, CreatedAt, CreatedBy) VALUES ($id, $doc, $ver, $file, $size, $created, $createdBy)";
+            cmd.CommandText = "INSERT INTO DocumentVersions (Id, DocumentId, VersionNumber, FileName, Size, CreatedAt, CreatedBy, StoragePath) VALUES ($id, $doc, $ver, $file, $size, $created, $createdBy, $path)";
             cmd.Parameters.AddWithValue("$id", version.Id.ToString());
             cmd.Parameters.AddWithValue("$doc", version.DocumentId.ToString());
             cmd.Parameters.AddWithValue("$ver", version.VersionNumber);
@@ -99,6 +100,7 @@ namespace SalesForgeOCR.Data.Repositories
             cmd.Parameters.AddWithValue("$size", version.Size);
             cmd.Parameters.AddWithValue("$created", version.CreatedAt.ToString("o"));
             cmd.Parameters.AddWithValue("$createdBy", version.CreatedBy ?? string.Empty);
+            cmd.Parameters.AddWithValue("$path", (object?)version.StoragePath ?? DBNull.Value);
             await cmd.ExecuteNonQueryAsync(cancellationToken);
 
             // Update Documents.CurrentVersionId
@@ -116,7 +118,7 @@ namespace SalesForgeOCR.Data.Repositories
             await using var conn = new SqliteConnection(connStr);
             await conn.OpenAsync(cancellationToken);
             var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT Id, DocumentId, VersionNumber, FileName, Size, CreatedAt, CreatedBy FROM DocumentVersions WHERE DocumentId = $did ORDER BY VersionNumber DESC";
+            cmd.CommandText = "SELECT Id, DocumentId, VersionNumber, FileName, Size, CreatedAt, CreatedBy, StoragePath FROM DocumentVersions WHERE DocumentId = $did ORDER BY VersionNumber DESC";
             cmd.Parameters.AddWithValue("$did", documentId.ToString());
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
@@ -129,7 +131,8 @@ namespace SalesForgeOCR.Data.Repositories
                     FileName = reader.GetString(3),
                     Size = reader.GetInt64(4),
                     CreatedAt = DateTime.Parse(reader.GetString(5)),
-                    CreatedBy = reader.IsDBNull(6) ? string.Empty : reader.GetString(6)
+                    CreatedBy = reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
+                    StoragePath = reader.IsDBNull(7) ? null : reader.GetString(7)
                 });
             }
             return list;

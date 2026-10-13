@@ -18,6 +18,10 @@ namespace SalesForgeOCR.Search
 
         public async Task<SearchResponse> SearchAsync(SearchRequest request, CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(request);
+            if (string.IsNullOrWhiteSpace(request.Query)) return new SearchResponse();
+            if (request.Pagination.Page < 1 || request.Pagination.PageSize < 1 || request.Pagination.PageSize > 1000) throw new ArgumentOutOfRangeException(nameof(request.Pagination));
+            if (request.MatchType == SearchMatchType.Fuzzy) throw new NotSupportedException("Fuzzy matching is not supported by this search engine. Use prefix or phrase matching.");
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var response = new SearchResponse();
             var results = new Dictionary<Guid, SearchResult>();
@@ -30,9 +34,9 @@ namespace SalesForgeOCR.Search
             var q = BuildMatchQuery(request.Query, request.MatchType);
 
             var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT rowid, DocumentId, SourceRecordId, SourceType, SearchableText, bm25(SearchIndexFTS) AS score FROM SearchIndexFTS WHERE SearchIndexFTS MATCH $q ORDER BY score LIMIT $limit";
+            cmd.CommandText = "SELECT rowid, DocumentId, SourceRecordId, SourceType, SearchableText, bm25(SearchIndexFTS) AS score FROM SearchIndexFTS WHERE SearchIndexFTS MATCH $q AND ($source IS NULL OR SourceType = $source) ORDER BY score";
             cmd.Parameters.AddWithValue("$q", q);
-            cmd.Parameters.AddWithValue("$limit", request.Pagination.PageSize);
+            cmd.Parameters.AddWithValue("$source", (object?)request.SourceType?.ToString() ?? DBNull.Value);
 
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
 
@@ -67,7 +71,7 @@ namespace SalesForgeOCR.Search
                     SourceRecordId = srcGuid,
                     MatchValue = r.text,
                     Snippet = CreateSnippet(r.text, request.Query),
-                    Score = r.score,
+                    Score = -r.score,
                     SourceType = ParseSourceType(r.srcType),
                     CreatedDate = null,
                     LastModifiedDate = null
@@ -93,7 +97,7 @@ namespace SalesForgeOCR.Search
                 }
 
                 sres.Hits.Add(hit);
-                sres.Score = Math.Max(sres.Score, hit.Score);
+                sres.Score += hit.Score;
             }
 
             // Populate DocumentName and VersionId for results
@@ -108,37 +112,57 @@ namespace SalesForgeOCR.Search
                 if (await r.ReadAsync(cancellationToken))
                 {
                     res.DocumentName = r.IsDBNull(0) ? string.Empty : r.GetString(0);
-                    if (!r.IsDBNull(1) && Guid.TryParse(r.GetString(1), out var ver))
-                    {
-                        // attach version id to hits
-                        foreach (var h in res.Hits) h.PageNumber = h.PageNumber; // no-op, reserved for future
-                    }
+                    foreach (var hit in res.Hits) hit.DocumentName = res.DocumentName;
                 }
             }
 
-            response.Results = results.Values.ToList();
+            foreach (var group in request.FilterGroups)
+            {
+                foreach (var result in results.Values)
+                    result.Hits = result.Hits.Where(hit => group.MustMatchAll
+                        ? group.Filters.All(filter => MatchesFilter(filter, result, hit))
+                        : group.Filters.Any(filter => MatchesFilter(filter, result, hit))).ToList();
+            }
+            var matching = results.Values.Where(result => result.Hits.Count > 0).ToList();
+            foreach (var result in matching) result.Score = result.Hits.Sum(hit => hit.Score);
+            IEnumerable<SearchResult> ordered = request.Sort?.Field.ToLowerInvariant() switch
+            {
+                null or "score" => matching.OrderByDescending(result => result.Score),
+                "documentname" => matching.OrderBy(result => result.DocumentName, StringComparer.OrdinalIgnoreCase),
+                "documentid" => matching.OrderBy(result => result.DocumentId),
+                _ => throw new NotSupportedException("Unsupported search sort field.")
+            };
+            if (request.Sort != null && ((request.Sort.Field.Equals("score", StringComparison.OrdinalIgnoreCase) && !request.Sort.Descending) || (!request.Sort.Field.Equals("score", StringComparison.OrdinalIgnoreCase) && request.Sort.Descending))) ordered = ordered.Reverse();
+            response.Statistics.TotalMatches = matching.Sum(result => result.Hits.Count);
+            response.Results = ordered.Skip(checked((request.Pagination.Page - 1) * request.Pagination.PageSize)).Take(request.Pagination.PageSize).ToList();
             sw.Stop();
-            response.Statistics.TotalMatches = response.Results.Sum(x => x.Hits.Count);
+
             response.Statistics.QueryTimeMs = sw.Elapsed.TotalMilliseconds;
             return response;
+        }
+
+        private static bool MatchesFilter(SearchFilter filter, SearchResult result, SearchHit hit)
+        {
+            var actual = filter.Field.ToLowerInvariant() switch
+            {
+                "documentid" => result.DocumentId.ToString(),
+                "documentname" => result.DocumentName,
+                "sourcetype" => hit.SourceType.ToString(),
+                "entitytype" => hit.EntityType ?? "",
+                "metadatakey" => hit.MetadataKey ?? "",
+                "pagenumber" => hit.PageNumber.ToString(),
+                "matchvalue" => hit.MatchValue,
+                _ => throw new NotSupportedException($"Unsupported search filter field: {filter.Field}")
+            };
+            var matches = actual.Equals(filter.Value,StringComparison.OrdinalIgnoreCase);
+            return filter.Negate ? !matches : matches;
         }
 
         private static string BuildMatchQuery(string query, Core.Search.SearchMatchType matchType)
         {
             if (string.IsNullOrWhiteSpace(query)) return "";
-            switch (matchType)
-            {
-                case Core.Search.SearchMatchType.Exact:
-                    return $"\"{query}\"";
-                case Core.Search.SearchMatchType.Phrase:
-                    return $"\"{query}\"";
-                case Core.Search.SearchMatchType.Prefix:
-                    return query + "*";
-                case Core.Search.SearchMatchType.Fuzzy:
-                    return query; // FTS5 does not support fuzzy directly
-                default:
-                    return query + "*";
-            }
+            var escaped = "\"" + query.Replace("\"", "\"\"") + "\"";
+            return matchType == SearchMatchType.Prefix ? escaped + "*" : escaped;
         }
 
         private static string CreateSnippet(string text, string query)

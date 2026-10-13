@@ -16,7 +16,7 @@ namespace SalesForgeOCR.DocumentProcessing.Processing.Stages
 
         public override async Task<ProcessingResult> ExecuteAsync(ProcessingContext context, CancellationToken cancellationToken = default)
         {
-            var meta = await _extractor.ExtractMetadataAsync(context.Version.FileName, cancellationToken);
+            var meta = await _extractor.ExtractMetadataAsync(context.Version.StoragePath ?? context.Version.FileName, cancellationToken);
             foreach (var (key, value) in meta)
             {
                 context.Metadata.Add(new SalesForgeOCR.Core.Entities.DocumentMetadata

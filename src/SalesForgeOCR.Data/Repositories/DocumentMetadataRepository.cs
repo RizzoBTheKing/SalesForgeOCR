@@ -85,11 +85,13 @@ namespace SalesForgeOCR.Data.Repositories
                 cmd.Parameters.AddWithValue("$doc", documentId.ToString());
                 await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-                await _index.RemoveDocumentIndexAsync(documentId, cancellationToken);
+                using var indexDelete = conn.CreateCommand();
+                indexDelete.CommandText = "DELETE FROM SearchIndexFTS WHERE DocumentId = $doc AND SourceType = 'Metadata'";
+                indexDelete.Parameters.AddWithValue("$doc", documentId.ToString());
+                await indexDelete.ExecuteNonQueryAsync(cancellationToken);
 
                 var fts = conn.CreateCommand();
-                fts.CommandText = "DELETE FROM MetadataFTS WHERE rowid IN (SELECT rowid FROM MetadataFTS WHERE Key MATCH $key)";
-                fts.Parameters.AddWithValue("$key", "*");
+                fts.CommandText = "DELETE FROM MetadataFTS; INSERT INTO MetadataFTS (Key, Value) SELECT Key, Value FROM DocumentMetadata";
                 await fts.ExecuteNonQueryAsync(cancellationToken);
             }
             catch (Exception ex)
@@ -113,38 +115,6 @@ namespace SalesForgeOCR.Data.Repositories
                 await cmd.ExecuteNonQueryAsync(cancellationToken);
 
                 await _index.UpdateIndexEntryAsync(metadata.Id, metadata.Value ?? string.Empty, 0.5, cancellationToken);
-
-                var upd = conn.CreateCommand();
-                upd.CommandText = "INSERT INTO MetadataFTS (Key, Value) VALUES ($key, $value)";
-                upd.Parameters.AddWithValue("$key", metadata.Key);
-                upd.Parameters.AddWithValue("$value", metadata.Value ?? string.Empty);
-                await upd.ExecuteNonQueryAsync(cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                await _audit.InsertAsync(new AuditLog { EventType = "DocumentMetadata.Update.Failure", Actor = "system", Details = ex.Message });
-                throw;
-            }
-        }
-    }
-}
-
-                throw;
-            }
-        }
-
-        public async Task UpdateAsync(DocumentMetadata metadata, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                var connStr = new SqliteConnectionStringBuilder { DataSource = _dbPath }.ToString();
-                await using var conn = new SqliteConnection(connStr);
-                await conn.OpenAsync(cancellationToken);
-                var cmd = conn.CreateCommand();
-                cmd.CommandText = "UPDATE DocumentMetadata SET Value = $value WHERE Id = $id";
-                cmd.Parameters.AddWithValue("$id", metadata.Id.ToString());
-                cmd.Parameters.AddWithValue("$value", metadata.Value ?? string.Empty);
-                await cmd.ExecuteNonQueryAsync(cancellationToken);
 
                 var upd = conn.CreateCommand();
                 upd.CommandText = "INSERT INTO MetadataFTS (Key, Value) VALUES ($key, $value)";

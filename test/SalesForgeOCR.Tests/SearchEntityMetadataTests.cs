@@ -16,6 +16,7 @@ namespace SalesForgeOCR.Tests
         [TestInitialize]
         public void Init()
         {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             if (File.Exists(DbFile)) File.Delete(DbFile);
             var init = new DatabaseInitializer(Path.Combine(Directory.GetCurrentDirectory(), DbFile));
             init.InitializeAsync().GetAwaiter().GetResult();

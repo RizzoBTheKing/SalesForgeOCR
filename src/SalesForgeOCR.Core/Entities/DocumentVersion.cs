@@ -11,6 +11,7 @@ namespace SalesForgeOCR.Core.Entities
         public long Size { get; set; }
         public DateTime CreatedAt { get; set; }
         public string CreatedBy { get; set; } = string.Empty;
+        public string? StoragePath { get; set; }
 
         public DocumentVersion()
         {

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Windows.Forms;
 
@@ -32,7 +33,7 @@ namespace SalesForgeOCR.UI.Forms
             }
 
             // Use MasterPasswordSetupService to persist master password
-            var svc = (SalesForgeOCR.Security.MasterPasswordSetupService)Program.Host.Services.GetService(typeof(SalesForgeOCR.Security.MasterPasswordSetupService));
+            var svc = Program.Host.Services.GetRequiredService<SalesForgeOCR.Security.MasterPasswordSetupService>();
             if (svc == null)
             {
                 MessageBox.Show("Setup service not available.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);

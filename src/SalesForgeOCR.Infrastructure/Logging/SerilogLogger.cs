@@ -6,7 +6,7 @@ namespace SalesForgeOCR.Infrastructure.Logging
 {
     public static class SerilogLogger
     {
-        public static Logger CreateLogger(string? logFile = null)
+        public static Serilog.Core.Logger CreateLogger(string? logFile = null)
         {
             logFile ??= "logs\\salesforgeocr-.log";
             return new LoggerConfiguration()

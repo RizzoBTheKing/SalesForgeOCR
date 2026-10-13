@@ -16,7 +16,7 @@ namespace SalesForgeOCR.DocumentProcessing.Processing.Stages
 
         public override async Task<ProcessingResult> ExecuteAsync(ProcessingContext context, CancellationToken cancellationToken = default)
         {
-            var images = await _imageExtractor.ExtractImagesAsync(context.Version.FileName, cancellationToken);
+            var images = await _imageExtractor.ExtractImagesAsync(context.Version.StoragePath ?? context.Version.FileName, cancellationToken);
             var page = 1;
             foreach (var path in images)
             {

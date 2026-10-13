@@ -91,11 +91,13 @@ namespace SalesForgeOCR.Data.Repositories
                 cmd.Parameters.AddWithValue("$doc", documentId.ToString());
                 await cmd.ExecuteNonQueryAsync(cancellationToken);
 
-                await _index.RemoveDocumentIndexAsync(documentId, cancellationToken);
+                using var indexDelete = conn.CreateCommand();
+                indexDelete.CommandText = "DELETE FROM SearchIndexFTS WHERE DocumentId = $doc AND SourceType = 'Entity'";
+                indexDelete.Parameters.AddWithValue("$doc", documentId.ToString());
+                await indexDelete.ExecuteNonQueryAsync(cancellationToken);
 
                 var fts = conn.CreateCommand();
-                fts.CommandText = "DELETE FROM EntityFTS WHERE rowid IN (SELECT rowid FROM EntityFTS WHERE Value MATCH $val)"; // best-effort
-                fts.Parameters.AddWithValue("$val", "*");
+                fts.CommandText = "DELETE FROM EntityFTS; INSERT INTO EntityFTS (Type, Value) SELECT Type, Value FROM DocumentEntities";
                 await fts.ExecuteNonQueryAsync(cancellationToken);
             }
             catch (Exception ex)

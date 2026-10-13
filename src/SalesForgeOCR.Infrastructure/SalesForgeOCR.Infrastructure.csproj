@@ -8,4 +8,5 @@
 	<ProjectReference Include="..\SalesForgeOCR.Core\SalesForgeOCR.Core.csproj" />
 	<ProjectReference Include="..\SalesForgeOCR.Shared\SalesForgeOCR.Shared.csproj" />
   </ItemGroup>
-</Project>
+<ItemGroup><ProjectReference Include="../SalesForgeOCR.Data/SalesForgeOCR.Data.csproj" /></ItemGroup>
+<ItemGroup><PackageReference Include="Serilog" Version="2.12.0" /><PackageReference Include="Serilog.Sinks.File" Version="5.0.0" /><PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="7.0.0" /></ItemGroup></Project>

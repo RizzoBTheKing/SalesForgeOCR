@@ -30,6 +30,8 @@ namespace SalesForgeOCR.Application.Services
 
         public Task AddVersionAsync(Guid documentId, DocumentVersion version, CancellationToken cancellationToken = default)
         {
+            if (version.DocumentId != documentId) throw new ArgumentException("Version belongs to a different document.");
+            version.Validate();
             return _repo.AddVersionAsync(version, cancellationToken);
         }
 

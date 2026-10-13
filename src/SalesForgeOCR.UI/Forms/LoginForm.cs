@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Windows.Forms;
 using SalesForgeOCR.UI.Services;
@@ -33,9 +34,9 @@ namespace SalesForgeOCR.UI.Forms
                 return;
             }
 
-            var auth = (SalesForgeOCR.Security.AuthenticationService)Program.Host.Services.GetService(typeof(SalesForgeOCR.Security.AuthenticationService));
-            var sessionMgr = (SalesForgeOCR.Security.SessionManager)Program.Host.Services.GetService(typeof(SalesForgeOCR.Security.SessionManager));
-            var audit = (SalesForgeOCR.Core.Interfaces.IAuditService)Program.Host.Services.GetService(typeof(SalesForgeOCR.Core.Interfaces.IAuditService));
+            var auth = Program.Host.Services.GetRequiredService<SalesForgeOCR.Security.AuthenticationService>();
+            var sessionMgr = Program.Host.Services.GetRequiredService<SalesForgeOCR.Security.SessionManager>();
+            var audit = Program.Host.Services.GetRequiredService<SalesForgeOCR.Core.Interfaces.IAuditService>();
 
             try
             {
@@ -49,7 +50,7 @@ namespace SalesForgeOCR.UI.Forms
 
                 // create session
                 var session = await auth.CreateSessionAsync("admin");
-                if (sessionMgr != null) await sessionMgr.CreateAsync(session);
+
                 if (audit != null) await audit.LogAsync(new SalesForgeOCR.Core.Entities.AuditLog { EventType = "Auth.Success", Actor = "admin", Details = "User logged in" });
 
                 DialogResult = DialogResult.OK;

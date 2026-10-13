@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.IO;
 using System.Linq;
@@ -23,6 +24,7 @@ namespace SalesForgeOCR.UI.Forms
 
             _lstFiles = new ListBox { Dock = DockStyle.Fill };
             Controls.Add(_lstFiles);
+            _lstFiles.BringToFront();
 
             _btnQueue = new Button { Text = "Queue for Processing", Dock = DockStyle.Bottom };
             _btnQueue.Click += BtnQueue_Click;
@@ -49,7 +51,7 @@ namespace SalesForgeOCR.UI.Forms
 
         private void BtnSelect_Click(object? sender, EventArgs e)
         {
-            using var dlg = new OpenFileDialog { Multiselect = true };
+            using var dlg = new OpenFileDialog { Multiselect = true, Filter = "OCR documents|*.pdf;*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.bmp;*.txt;*.csv" };
             if (dlg.ShowDialog() == DialogResult.OK)
             {
                 foreach (var f in dlg.FileNames) _lstFiles.Items.Add(f);
@@ -58,32 +60,23 @@ namespace SalesForgeOCR.UI.Forms
 
         private async void BtnQueue_Click(object? sender, EventArgs e)
         {
-            var docSvc = (SalesForgeOCR.Application.Services.DocumentService)Program.Host.Services.GetService(typeof(SalesForgeOCR.Application.Services.DocumentService));
-            var jobSvc = (SalesForgeOCR.Application.Services.ProcessingJobService)Program.Host.Services.GetService(typeof(SalesForgeOCR.Application.Services.ProcessingJobService));
-            if (docSvc == null || jobSvc == null)
-            {
-                MessageBox.Show("Processing services unavailable.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            foreach (var it in _lstFiles.Items.OfType<string>())
+            var importer = Program.Host.Services.GetRequiredService<DocumentImportService>();
+            _btnQueue.Enabled = false;
+            var successful = new System.Collections.Generic.List<string>();
+            foreach (var it in _lstFiles.Items.OfType<string>().ToArray())
             {
                 try
                 {
-                    var fi = new System.IO.FileInfo(it);
-                    var doc = await docSvc.CreateDocumentAsync(fi.Name, fi.Length, "admin");
-                    var ver = new SalesForgeOCR.Core.Entities.DocumentVersion { Id = Guid.NewGuid(), DocumentId = doc.Id, VersionNumber = 1, FileName = fi.Name, Size = fi.Length, CreatedAt = DateTime.UtcNow, CreatedBy = "admin" };
-                    await docSvc.AddVersionAsync(doc.Id, ver);
-
-                    var job = new SalesForgeOCR.Core.Entities.ProcessingJob { DocumentId = doc.Id, VersionId = ver.Id, CreatedBy = "admin" };
-                    await jobSvc.CreateAsync(job);
+                    await importer.ImportAsync(it);
+                    successful.Add(it);
                 }
                 catch (Exception ex)
                 {
                     MessageBox.Show($"Failed to queue {it}: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
-            _lstFiles.Items.Clear();
+            foreach (var item in successful) _lstFiles.Items.Remove(item);
+            _btnQueue.Enabled = true;
         }
 
         public Control GetViewControl() => this;

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Windows.Forms;
 using SalesForgeOCR.UI.Services;
 
@@ -9,7 +10,7 @@ namespace SalesForgeOCR.UI.Forms
         private readonly SalesForgeOCR.Application.Services.ProcessingJobService _jobSvc;
         public QueueView()
         {
-            _jobSvc = (SalesForgeOCR.Application.Services.ProcessingJobService)Program.Host.Services.GetService(typeof(SalesForgeOCR.Application.Services.ProcessingJobService));
+            _jobSvc = Program.Host.Services.GetRequiredService<SalesForgeOCR.Application.Services.ProcessingJobService>();
             _lv = new ListView { Dock = DockStyle.Fill, View = View.Details };
             _lv.Columns.Add("Id", 150);
             _lv.Columns.Add("DocumentId", 150);
@@ -19,15 +20,21 @@ namespace SalesForgeOCR.UI.Forms
             _lv.Columns.Add("Completed", 150);
             _lv.Columns.Add("Error", 200);
             Controls.Add(_lv);
+            var refresh = new Button { Text = "Refresh processing status", Dock = DockStyle.Top, Height = 36 };
+            Controls.Add(refresh);_lv.BringToFront();
+            refresh.Click += async (_, _) => await RefreshAsync();
+            VisibleChanged += async (_, _) => { if (Visible) await RefreshAsync(); };
             Load += async (s, e) => await RefreshAsync();
         }
 
         private async System.Threading.Tasks.Task RefreshAsync()
         {
+            try
+            {
             _lv.Items.Clear();
             if (_jobSvc == null) return;
             // No repository method for listing all jobs; this scans documents and retrieves per-document jobs as a pragmatic approach
-            var docRepo = (SalesForgeOCR.Core.Interfaces.IDocumentRepository)Program.Host.Services.GetService(typeof(SalesForgeOCR.Core.Interfaces.IDocumentRepository));
+            var docRepo = Program.Host.Services.GetRequiredService<SalesForgeOCR.Core.Interfaces.IDocumentRepository>();
             if (docRepo == null) return;
             var docs = await docRepo.SearchDocumentsAsync("", System.Threading.CancellationToken.None);
             foreach (var d in docs)
@@ -39,6 +46,8 @@ namespace SalesForgeOCR.UI.Forms
                     _lv.Items.Add(li);
                 }
             }
+            }
+            catch (Exception error) { MessageBox.Show(error.Message, "Queue failed"); }
         }
 
         public Control GetViewControl() => this;

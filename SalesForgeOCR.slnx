@@ -1,1 +1,12 @@
-<Solution />
+<Solution>
+  <Project Path="src/SalesForgeOCR.Application/SalesForgeOCR.Application.csproj" />
+  <Project Path="src/SalesForgeOCR.Core/SalesForgeOCR.Core.csproj" />
+  <Project Path="src/SalesForgeOCR.Data/SalesForgeOCR.Data.csproj" />
+  <Project Path="src/SalesForgeOCR.DocumentProcessing/SalesForgeOCR.DocumentProcessing.csproj" />
+  <Project Path="src/SalesForgeOCR.Infrastructure/SalesForgeOCR.Infrastructure.csproj" />
+  <Project Path="src/SalesForgeOCR.Search/SalesForgeOCR.Search.csproj" />
+  <Project Path="src/SalesForgeOCR.Security/SalesForgeOCR.Security.csproj" />
+  <Project Path="src/SalesForgeOCR.Shared/SalesForgeOCR.Shared.csproj" />
+  <Project Path="src/SalesForgeOCR.UI/SalesForgeOCR.UI.csproj" />
+  <Project Path="test/SalesForgeOCR.Tests/SalesForgeOCR.Tests.csproj" />
+</Solution>

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Linq;
 using System.Windows.Forms;
@@ -22,13 +23,17 @@ namespace SalesForgeOCR.UI.Forms
             _btnSearch = new Button { Text = "Search", Dock = DockStyle.Top };
             _btnSearch.Click += BtnSearch_Click;
             Controls.Add(_btnSearch);
-            _lstResults = new ListBox { Dock = DockStyle.Fill };
+            _lstResults = new ListBox { Dock = DockStyle.Fill, DisplayMember = "Display" };
             _lstResults.DoubleClick += LstResults_DoubleClick;
             Controls.Add(_lstResults);
+            _lstResults.BringToFront();
         }
 
         private async void BtnSearch_Click(object? sender, EventArgs e)
         {
+            _btnSearch.Enabled = false;
+            try
+            {
             var req = new SearchRequest { Query = _txtQuery.Text, MatchType = SearchMatchType.Prefix };
             var res = await _search.SearchAsync(req);
             _lstResults.Items.Clear();
@@ -36,6 +41,9 @@ namespace SalesForgeOCR.UI.Forms
             {
                 _lstResults.Items.Add(r);
             }
+            }
+            catch (Exception error) { MessageBox.Show(error.Message, "Search failed"); }
+            finally { _btnSearch.Enabled = true; }
         }
 
         private void LstResults_DoubleClick(object? sender, EventArgs e)
@@ -45,7 +53,7 @@ namespace SalesForgeOCR.UI.Forms
             var docIdProp = sel.GetType().GetProperty("DocumentId");
             if (docIdProp == null) return;
             var docId = (Guid)docIdProp.GetValue(sel)!;
-            var viewer = (SalesForgeOCR.UI.Forms.DocumentViewerForm)Program.Host.Services.GetService(typeof(SalesForgeOCR.UI.Forms.DocumentViewerForm));
+            var viewer = Program.Host.Services.GetRequiredService<SalesForgeOCR.UI.Forms.DocumentViewerForm>();
             if (viewer != null)
             {
                 viewer.LoadDocument(docId);

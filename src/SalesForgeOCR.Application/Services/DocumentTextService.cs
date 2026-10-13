@@ -37,7 +37,7 @@ namespace SalesForgeOCR.Application.Services
         public async Task DeleteByDocumentAsync(Guid documentId, CancellationToken cancellationToken = default)
         {
             await _repo.DeleteByDocumentAsync(documentId, cancellationToken);
-            await _index.RemoveDocumentIndexAsync(documentId, cancellationToken);
+            await _index.ReindexDocumentAsync(documentId, cancellationToken);
             await _audit.LogAsync(new AuditLog { EventType = "DocumentText.Delete", Actor = "system", Details = $"Deleted text for document {documentId}" }, cancellationToken);
         }
 

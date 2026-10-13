@@ -26,6 +26,7 @@ namespace SalesForgeOCR.UI.Forms
 
             _contentPanel = new Panel { Dock = DockStyle.Fill };
             Controls.Add(_contentPanel);
+            _contentPanel.BringToFront();
 
             _nav = new NavigationService(_sp, _contentPanel);
 

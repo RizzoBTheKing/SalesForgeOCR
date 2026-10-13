@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Windows.Forms;
 using SalesForgeOCR.UI.Services;
@@ -14,7 +15,7 @@ namespace SalesForgeOCR.UI.Forms
             Text = "First Run Wizard";
             _btnStart = new Button { Text = "Create Master Password", Dock = DockStyle.Top };
             _btnStart.Click += (s, e) => {
-                var mp = (SalesForgeOCR.UI.Forms.MasterPasswordForm)Program.Host.Services.GetService(typeof(SalesForgeOCR.UI.Forms.MasterPasswordForm));
+                var mp = Program.Host.Services.GetRequiredService<SalesForgeOCR.UI.Forms.MasterPasswordForm>();
                 if (mp.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
                     DialogResult = DialogResult.OK;

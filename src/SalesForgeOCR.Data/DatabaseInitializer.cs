@@ -16,13 +16,15 @@ namespace SalesForgeOCR.Data
 
         public async Task InitializeAsync()
         {
-            var needsCreate = !File.Exists(_dbPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_dbPath))!);
             var connectionString = new SqliteConnectionStringBuilder { DataSource = _dbPath }.ToString();
 
             using var conn = new SqliteConnection(connectionString);
             await conn.OpenAsync();
 
-            if (needsCreate)
+            // Schema initialization is idempotent even for an empty or existing database.
+            // Always execute CREATE IF NOT EXISTS; the file may already exist without tables.
+            if (conn.State == System.Data.ConnectionState.Open)
             {
                 var cmd = conn.CreateCommand();
                 cmd.CommandText = @"BEGIN TRANSACTION;
@@ -175,6 +177,14 @@ CREATE INDEX IF NOT EXISTS IDX_ProcessingJobs_Status ON ProcessingJobs(Status);
 
 COMMIT;";
                 await cmd.ExecuteNonQueryAsync();
+            }
+            using var columns = conn.CreateCommand();
+            columns.CommandText = "SELECT COUNT(*) FROM pragma_table_info('DocumentVersions') WHERE name = 'StoragePath'";
+            if (Convert.ToInt64(await columns.ExecuteScalarAsync()) == 0)
+            {
+                using var migrate = conn.CreateCommand();
+                migrate.CommandText = "ALTER TABLE DocumentVersions ADD COLUMN StoragePath TEXT";
+                await migrate.ExecuteNonQueryAsync();
             }
         }
     }

@@ -16,7 +16,7 @@ namespace SalesForgeOCR.DocumentProcessing.Processing.Stages
 
         public override async Task<ProcessingResult> ExecuteAsync(ProcessingContext context, CancellationToken cancellationToken = default)
         {
-            var tables = await _tableExtractor.ExtractTablesAsync(context.Version.FileName, cancellationToken);
+            var tables = await _tableExtractor.ExtractTablesAsync(context.Version.StoragePath ?? context.Version.FileName, cancellationToken);
             foreach (var (page, html) in tables)
             {
                 context.Tables.Add(new SalesForgeOCR.Core.Entities.DocumentTable

@@ -21,9 +21,9 @@ namespace SalesForgeOCR.Infrastructure.Audit
             {
                 await _repo.InsertAsync(entry, cancellationToken);
             }
-            catch (Exception)
+            catch (Exception error)
             {
-                // swallow - auditing should not crash processing
+                System.Diagnostics.Trace.TraceError($"Audit write failed: {error}");
             }
         }
     }

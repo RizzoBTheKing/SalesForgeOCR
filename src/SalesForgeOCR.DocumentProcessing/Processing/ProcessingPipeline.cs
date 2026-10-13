@@ -20,6 +20,7 @@ namespace SalesForgeOCR.DocumentProcessing.Processing
         {
             foreach (var stage in _stages)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var res = await stage.ExecuteAsync(context, cancellationToken);
                 if (!res.Success)
                 {

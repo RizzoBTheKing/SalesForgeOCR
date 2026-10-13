@@ -2,6 +2,6 @@
   <PropertyGroup>
 	<Company>SalesForgeOCR</Company>
 	<Authors>SalesForgeOCR</Authors>
-	<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+	<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
   </PropertyGroup>
 </Project>

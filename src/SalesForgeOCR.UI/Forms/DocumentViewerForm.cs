@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Linq;
 using System.Windows.Forms;
@@ -10,7 +11,8 @@ namespace SalesForgeOCR.UI.Forms
         private Guid _documentId;
         private readonly TabControl _tabs;
         private readonly ListBox _lstVersions;
-        private readonly ListBox _lstTexts;
+        private readonly RichTextBox _textContent;
+        private readonly RichTextBox _tableContent;
         private readonly ListBox _lstEntities;
         private readonly ListBox _lstMetadata;
         private readonly ListBox _lstImages;
@@ -22,7 +24,10 @@ namespace SalesForgeOCR.UI.Forms
             _tabs = new TabControl { Dock = DockStyle.Fill };
 
             _lstVersions = new ListBox { Dock = DockStyle.Fill }; _tabs.TabPages.Add(new TabPage("Versions") { Controls = { _lstVersions } });
-            _lstTexts = new ListBox { Dock = DockStyle.Fill }; _tabs.TabPages.Add(new TabPage("Extracted Text") { Controls = { _lstTexts } });
+            _textContent = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new System.Drawing.Font("Segoe UI", 11) };
+            _tabs.TabPages.Add(new TabPage("Extracted Text") { Controls = { _textContent } });
+            _tableContent = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true };
+            _tabs.TabPages.Add(new TabPage("Tables") { Controls = { _tableContent } });
             _lstEntities = new ListBox { Dock = DockStyle.Fill }; _tabs.TabPages.Add(new TabPage("Entities") { Controls = { _lstEntities } });
             _lstMetadata = new ListBox { Dock = DockStyle.Fill }; _tabs.TabPages.Add(new TabPage("Metadata") { Controls = { _lstMetadata } });
             _lstImages = new ListBox { Dock = DockStyle.Fill }; _tabs.TabPages.Add(new TabPage("Images") { Controls = { _lstImages } });
@@ -30,11 +35,24 @@ namespace SalesForgeOCR.UI.Forms
             _lstAudit = new ListBox { Dock = DockStyle.Fill }; _tabs.TabPages.Add(new TabPage("Audit") { Controls = { _lstAudit } });
 
             Controls.Add(_tabs);
+            var export = new Button { Text = "Export extracted text", Dock = DockStyle.Bottom, Height = 36 };
+            export.Click += (sender, args) =>
+            {
+                using var dialog = new SaveFileDialog { Filter = "Text file|*.txt", FileName = "extracted-text.txt" };
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    try { System.IO.File.WriteAllText(dialog.FileName, _textContent.Text, System.Text.Encoding.UTF8); }
+                    catch (Exception error) { MessageBox.Show(error.Message, "Export failed"); }
+                }
+            };
+            Controls.Add(export);
+            _tabs.BringToFront();
         }
 
         public void LoadDocument(Guid documentId)
         {
             _documentId = documentId;
+            Dock = DockStyle.Fill;
             _ = LoadAsync();
         }
 
@@ -42,16 +60,17 @@ namespace SalesForgeOCR.UI.Forms
         {
             try
             {
-                var svc = (SalesForgeOCR.Application.Services.DocumentRetrievalService)Program.Host.Services.GetService(typeof(SalesForgeOCR.Application.Services.DocumentRetrievalService));
-                var auditRepo = (SalesForgeOCR.Core.Interfaces.IAuditService)Program.Host.Services.GetService(typeof(SalesForgeOCR.Core.Interfaces.IAuditService));
+                var svc = Program.Host.Services.GetRequiredService<SalesForgeOCR.Application.Services.DocumentRetrievalService>();
+                var auditRepo = Program.Host.Services.GetRequiredService<SalesForgeOCR.Core.Interfaces.IAuditService>();
                 if (svc == null) return;
                 var data = await svc.GetDocumentViewAsync(_documentId);
 
                 _lstVersions.Items.Clear();
                 foreach (var v in data.versions) _lstVersions.Items.Add($"{v.VersionNumber} - {v.FileName} - {v.CreatedAt:o}");
 
-                _lstTexts.Items.Clear();
-                foreach (var t in data.texts) _lstTexts.Items.Add($"Page {t.PageNumber}: {t.Content}");
+                _textContent.Text = string.Join(Environment.NewLine + Environment.NewLine, data.texts.OrderBy(t => t.PageNumber).Select(t => $"Page {t.PageNumber}{Environment.NewLine}{t.Content}"));
+                _tableContent.Text = string.Join(Environment.NewLine, data.tables.Select(t => $"Page {t.PageNumber}{Environment.NewLine}{t.Html}"));
+                _lstAudit.Items.Clear();
 
                 _lstEntities.Items.Clear();
                 foreach (var e in data.entities) _lstEntities.Items.Add($"{e.Type}: {e.Value} (Page {e.PageNumber})");

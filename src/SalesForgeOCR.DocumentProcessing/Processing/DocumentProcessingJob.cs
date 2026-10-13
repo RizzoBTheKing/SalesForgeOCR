@@ -22,7 +22,7 @@ namespace SalesForgeOCR.DocumentProcessing.Processing
             var context = new ProcessingContext(doc, version);
             var result = await _pipeline.ExecuteAsync(context, cancellationToken);
 
-            // In a real implementation we would persist extracted artifacts
+            // The final Storage stage persists all artifacts and search entries atomically.
             return result;
         }
     }
