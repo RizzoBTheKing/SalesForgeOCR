@@ -159,6 +159,7 @@ namespace SalesForgeOCR.UI
                     services.AddSingleton<SalesForgeOCR.Core.Interfaces.IAuthenticationService>(sp => sp.GetRequiredService<SalesForgeOCR.Security.AuthenticationService>());
                     services.AddSingleton<SalesForgeOCR.Security.SessionManager>();
 
+                    services.AddSingleton<SalesForgeOCR.DocumentProcessing.Engines.DocumentCodeGenerator>();
                     // Search and processing engines
                     services.AddSingleton<SalesForgeOCR.Core.Interfaces.ISearchEngine, SalesForgeOCR.Search.SqliteFtsSearchEngine>();
                     services.AddSingleton<SalesForgeOCR.Search.SearchIndexService>();
@@ -193,6 +194,7 @@ namespace SalesForgeOCR.UI
                         var factory = new SalesForgeOCR.DocumentProcessing.Processing.ProcessorFactory();
                         // Register default stages with resolved services
                         factory.Register(sp.GetRequiredService<SalesForgeOCR.DocumentProcessing.Processing.Stages.ValidationStage>());
+                        factory.Register(sp.GetRequiredService<SalesForgeOCR.DocumentProcessing.Processing.Stages.OfficeRenderingStage>());
                         factory.Register(sp.GetRequiredService<SalesForgeOCR.DocumentProcessing.Processing.Stages.ImageExtractionStage>());
                         factory.Register(sp.GetRequiredService<SalesForgeOCR.DocumentProcessing.Processing.Stages.TextExtractionStage>());
                         factory.Register(sp.GetRequiredService<SalesForgeOCR.DocumentProcessing.Processing.Stages.TableExtractionStage>());
@@ -204,6 +206,7 @@ namespace SalesForgeOCR.UI
                         return factory;
                     });
                     services.AddSingleton<SalesForgeOCR.DocumentProcessing.Processing.Stages.ValidationStage>();
+                    services.AddSingleton<SalesForgeOCR.DocumentProcessing.Processing.Stages.OfficeRenderingStage>();
                     services.AddSingleton<SalesForgeOCR.DocumentProcessing.Processing.Stages.ImageExtractionStage>();
                     services.AddSingleton<SalesForgeOCR.DocumentProcessing.Processing.Stages.TextExtractionStage>();
                     services.AddSingleton<SalesForgeOCR.DocumentProcessing.Processing.Stages.TableExtractionStage>();

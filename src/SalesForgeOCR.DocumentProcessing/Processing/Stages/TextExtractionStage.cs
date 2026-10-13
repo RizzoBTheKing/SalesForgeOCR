@@ -8,7 +8,7 @@ public class TextExtractionStage : ProcessingStage
     public override string Name => "TextExtraction";
     public override async Task<ProcessingResult> ExecuteAsync(ProcessingContext context, CancellationToken cancellationToken = default)
     {
-        var pages = await _ocr.ExtractTextPagesAsync(context.Version.StoragePath ?? context.Version.FileName, cancellationToken);
+        var pages = await _ocr.ExtractTextPagesAsync(context.RenderedPdfPath ?? context.Version.StoragePath ?? context.Version.FileName, cancellationToken);
         var number = 1;
         foreach (var content in pages)
             context.ExtractedText.Add(new DocumentText { DocumentId = context.Document.Id, VersionId = context.Version.Id, PageNumber = number++, Content = content, Confidence = 0 });

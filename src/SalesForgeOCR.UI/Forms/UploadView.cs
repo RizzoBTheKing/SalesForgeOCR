@@ -51,7 +51,7 @@ namespace SalesForgeOCR.UI.Forms
 
         private void BtnSelect_Click(object? sender, EventArgs e)
         {
-            using var dlg = new OpenFileDialog { Multiselect = true, Filter = "OCR documents|*.pdf;*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.bmp;*.txt;*.csv" };
+            using var dlg = new OpenFileDialog { Multiselect = true, Filter = "OCR documents|*.doc;*.docx;*.xlsx;*.pdf;*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.bmp;*.txt;*.csv" };
             if (dlg.ShowDialog() == DialogResult.OK)
             {
                 foreach (var f in dlg.FileNames) _lstFiles.Items.Add(f);

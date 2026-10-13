@@ -8,6 +8,8 @@ namespace SalesForgeOCR.Core.Entities
         public Guid DocumentId { get; set; }
         public Guid VersionId { get; set; }
         public int PageNumber { get; set; }
+        public string DisplayLabel => $"{Role} - Page {PageNumber}: {System.IO.Path.GetFileName(FilePath)}";
+        public string Role { get; set; } = "Body";
         public string FilePath { get; set; } = string.Empty;
         public string ThumbnailPath { get; set; } = string.Empty;
         public string ContentType { get; set; } = string.Empty;

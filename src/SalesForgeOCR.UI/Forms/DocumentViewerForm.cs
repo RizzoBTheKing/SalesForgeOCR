@@ -9,6 +9,11 @@ namespace SalesForgeOCR.UI.Forms
     public class DocumentViewerForm : UserControl, IView
     {
         private Guid _documentId;
+        private string? _sourcePath;
+        private readonly RichTextBox _code = new() { Dock=DockStyle.Fill,ReadOnly=true,WordWrap=false,Font=new System.Drawing.Font("Consolas",10) };
+        private readonly TextBox _methodName=new() { Text="GenerateImportedDocument",Width=250 };
+        private readonly PictureBox _imagePreview=new() { Dock=DockStyle.Fill,SizeMode=PictureBoxSizeMode.Zoom };
+
         private readonly TabControl _tabs;
         private readonly ListBox _lstVersions;
         private readonly RichTextBox _textContent;
@@ -30,7 +35,55 @@ namespace SalesForgeOCR.UI.Forms
             _tabs.TabPages.Add(new TabPage("Tables") { Controls = { _tableContent } });
             _lstEntities = new ListBox { Dock = DockStyle.Fill }; _tabs.TabPages.Add(new TabPage("Entities") { Controls = { _lstEntities } });
             _lstMetadata = new ListBox { Dock = DockStyle.Fill }; _tabs.TabPages.Add(new TabPage("Metadata") { Controls = { _lstMetadata } });
-            _lstImages = new ListBox { Dock = DockStyle.Fill }; _tabs.TabPages.Add(new TabPage("Images") { Controls = { _lstImages } });
+            _lstImages = new ListBox { Dock = DockStyle.Left,Width=260 };
+            var imageTab=new TabPage("Images");imageTab.Controls.Add(_imagePreview);imageTab.Controls.Add(_lstImages);_imagePreview.BringToFront();_tabs.TabPages.Add(imageTab);
+            _lstImages.SelectedIndexChanged += (_, _) =>
+            {
+                _imagePreview.Image?.Dispose();_imagePreview.Image=null;
+                if(_lstImages.SelectedItem is SalesForgeOCR.Core.Entities.DocumentImage image)
+                {
+                    try { using var source=System.Drawing.Image.FromFile(image.FilePath);_imagePreview.Image=new System.Drawing.Bitmap(source); }
+                    catch(Exception error) { MessageBox.Show(error.Message,"Image preview failed"); }
+                }
+            };
+            _lstImages.DisplayMember="DisplayLabel";
+            var codeTab=new TabPage("SalesForge code");
+            var tools=new FlowLayoutPanel { Dock=DockStyle.Top,Height=42,WrapContents=false };
+            var generate=new Button {Text="Generate code",AutoSize=true};
+            var copy=new Button {Text="Copy code",AutoSize=true};
+            var saveCode=new Button {Text="Export code + helper",AutoSize=true};
+            tools.Controls.AddRange(new Control[]{new Label {Text="Method name",AutoSize=true,Padding=new Padding(0,8,0,0)},_methodName,generate,copy,saveCode});
+            var guidance=new Label { Dock=DockStyle.Bottom,Height=44,Text="Word/Excel use installed Office once to preserve page layout. Exported code uses PDFsharp only. Use {{CustomerName}}, {{Branch}}, {{SalesExecutive}}, {{ChassisNumber}}, {{Make}}, {{Model}}, {{DeliveryDate}} or {{SellingPrice}} for live values; completed documents retain their static text." };
+            codeTab.Controls.Add(guidance);codeTab.Controls.Add(_code);codeTab.Controls.Add(tools);_code.BringToFront();_tabs.TabPages.Add(codeTab);
+            generate.Click += async (_, _) =>
+            {
+                if(_sourcePath==null) {MessageBox.Show("This document has no stored source file.");return;}
+                generate.Enabled=false;
+                try { _code.Text=await Program.Host.Services.GetRequiredService<SalesForgeOCR.DocumentProcessing.Engines.DocumentCodeGenerator>().GenerateAsync(_sourcePath,_methodName.Text.Trim()); }
+                catch(Exception error) {MessageBox.Show(error.Message,"Code generation failed");}
+                finally {generate.Enabled=true;}
+            };
+            copy.Click += (_, _) => { if(_code.TextLength>0) {try {Clipboard.SetText(_code.Text);}catch(Exception error){MessageBox.Show(error.Message,"Copy failed");}} };
+            saveCode.Click += (_, _) =>
+            {
+                if(_code.TextLength==0){MessageBox.Show("Generate the code first.");return;}
+                using var dialog=new SaveFileDialog {Filter="C# source|*.cs",FileName=_methodName.Text.Trim()+".cs"};
+                if(dialog.ShowDialog()!=DialogResult.OK)return;
+                try
+                {
+                    var helpers=new[]{"PdfFormDocument.cs","PdfLayoutProfile.cs"};
+                    if(helpers.Contains(System.IO.Path.GetFileName(dialog.FileName),StringComparer.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("Choose a method filename other than a renderer helper name.");
+                    System.IO.File.WriteAllText(dialog.FileName,"namespace SalesForge;\npublic partial class SalesForge\n{\n"+_code.Text+"\n}\n",System.Text.Encoding.UTF8);
+                    foreach(var name in helpers)
+                    {
+                        var helperTarget=System.IO.Path.Combine(System.IO.Path.GetDirectoryName(dialog.FileName)!,name);
+                        if(!System.IO.File.Exists(helperTarget))System.IO.File.Copy(System.IO.Path.Combine(AppContext.BaseDirectory,"CodeTemplates",name+".txt"),helperTarget);
+                    }
+                    MessageBox.Show("Code exported. Add the generated partial class to SalesForge. The renderer helper is included for projects that do not have it yet. Review all static text and field mappings.","Code exported");
+                }
+                catch(Exception error){MessageBox.Show(error.Message,"Code export failed");}
+            };
             _lstJobs = new ListBox { Dock = DockStyle.Fill }; _tabs.TabPages.Add(new TabPage("Processing History") { Controls = { _lstJobs } });
             _lstAudit = new ListBox { Dock = DockStyle.Fill }; _tabs.TabPages.Add(new TabPage("Audit") { Controls = { _lstAudit } });
 
@@ -64,6 +117,8 @@ namespace SalesForgeOCR.UI.Forms
                 var auditRepo = Program.Host.Services.GetRequiredService<SalesForgeOCR.Core.Interfaces.IAuditService>();
                 if (svc == null) return;
                 var data = await svc.GetDocumentViewAsync(_documentId);
+                _sourcePath=data.versions.FirstOrDefault(v=>v.Id==data.doc.CurrentVersionId)?.StoragePath ?? data.versions.FirstOrDefault()?.StoragePath;
+                _code.Clear();
 
                 _lstVersions.Items.Clear();
                 foreach (var v in data.versions) _lstVersions.Items.Add($"{v.VersionNumber} - {v.FileName} - {v.CreatedAt:o}");
@@ -79,7 +134,7 @@ namespace SalesForgeOCR.UI.Forms
                 foreach (var m in data.metadata) _lstMetadata.Items.Add($"{m.Key}: {m.Value}");
 
                 _lstImages.Items.Clear();
-                foreach (var im in data.images) _lstImages.Items.Add($"Page {im.PageNumber}: {im.FilePath}");
+                foreach (var im in data.images) _lstImages.Items.Add(im);
 
                 _lstJobs.Items.Clear();
                 foreach (var j in data.jobs) _lstJobs.Items.Add($"{j.Id} - {j.Status} - Created: {j.CreatedAt:o} - Error: {j.ErrorMessage}");
@@ -108,6 +163,11 @@ namespace SalesForgeOCR.UI.Forms
             }
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            if(disposing)_imagePreview.Image?.Dispose();
+            base.Dispose(disposing);
+        }
         public Control GetViewControl() => this;
     }
 }

@@ -16,4 +16,4 @@
 	<PackageReference Include="ClosedXML" Version="0.104.0" />
   </ItemGroup>
 <ItemGroup><ProjectReference Include="../SalesForgeOCR.Search/SalesForgeOCR.Search.csproj" /></ItemGroup>
-<ItemGroup><PackageReference Include="PDFtoImage" Version="5.4.0" /></ItemGroup><ItemGroup><PackageReference Include="System.IO.Packaging" Version="9.0.10" /></ItemGroup></Project>
+<ItemGroup><PackageReference Include="PDFtoImage" Version="5.4.0" /></ItemGroup><ItemGroup><PackageReference Include="System.IO.Packaging" Version="9.0.10" /></ItemGroup><ItemGroup><PackageReference Include="PDFsharp-GDI" Version="6.2.4" /></ItemGroup></Project>

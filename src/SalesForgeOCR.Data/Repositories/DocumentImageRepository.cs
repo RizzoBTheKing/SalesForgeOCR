@@ -25,7 +25,7 @@ namespace SalesForgeOCR.Data.Repositories
                 await using var conn = new SqliteConnection(connStr);
                 await conn.OpenAsync(cancellationToken);
                 var cmd = conn.CreateCommand();
-                cmd.CommandText = "INSERT INTO DocumentImages (Id, DocumentId, VersionId, PageNumber, FilePath, ThumbnailPath, ContentType, ExtractedAt, Hash) VALUES ($id, $doc, $ver, $page, $file, $thumb, $contentType, $extracted, $hash)";
+                cmd.CommandText = "INSERT INTO DocumentImages (Id, DocumentId, VersionId, PageNumber, FilePath, ThumbnailPath, ContentType, ExtractedAt, Hash, Role) VALUES ($id, $doc, $ver, $page, $file, $thumb, $contentType, $extracted, $hash, $role)";
                 cmd.Parameters.AddWithValue("$id", image.Id.ToString());
                 cmd.Parameters.AddWithValue("$doc", image.DocumentId.ToString());
                 cmd.Parameters.AddWithValue("$ver", image.VersionId.ToString());
@@ -35,6 +35,7 @@ namespace SalesForgeOCR.Data.Repositories
                 cmd.Parameters.AddWithValue("$contentType", image.ContentType ?? string.Empty);
                 cmd.Parameters.AddWithValue("$extracted", image.ExtractedAt.ToString("o"));
                 cmd.Parameters.AddWithValue("$hash", image.Hash ?? string.Empty);
+                if (cmd.CommandText.StartsWith("INSERT")) cmd.Parameters.AddWithValue("$role", image.Role);
                 await cmd.ExecuteNonQueryAsync(cancellationToken);
             }
             catch (Exception ex)
@@ -50,7 +51,7 @@ namespace SalesForgeOCR.Data.Repositories
             await using var conn = new SqliteConnection(connStr);
             await conn.OpenAsync(cancellationToken);
             var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT Id, DocumentId, VersionId, PageNumber, FilePath, ThumbnailPath, ContentType, ExtractedAt, Hash FROM DocumentImages WHERE Id = $id LIMIT 1";
+            cmd.CommandText = "SELECT Id, DocumentId, VersionId, PageNumber, FilePath, ThumbnailPath, ContentType, ExtractedAt, Hash, Role FROM DocumentImages WHERE Id = $id LIMIT 1";
             cmd.Parameters.AddWithValue("$id", id.ToString());
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
@@ -65,7 +66,8 @@ namespace SalesForgeOCR.Data.Repositories
                     ThumbnailPath = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
                     ContentType = reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
                     ExtractedAt = reader.IsDBNull(7) ? DateTime.UtcNow : DateTime.Parse(reader.GetString(7)),
-                    Hash = reader.IsDBNull(8) ? string.Empty : reader.GetString(8)
+                    Hash = reader.IsDBNull(8) ? string.Empty : reader.GetString(8),
+                    Role = reader.IsDBNull(9) ? "Body" : reader.GetString(9)
                 };
             }
             return null;
@@ -78,7 +80,7 @@ namespace SalesForgeOCR.Data.Repositories
             await using var conn = new SqliteConnection(connStr);
             await conn.OpenAsync(cancellationToken);
             var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT Id, DocumentId, VersionId, PageNumber, FilePath, ThumbnailPath, ContentType, ExtractedAt, Hash FROM DocumentImages WHERE DocumentId = $doc ORDER BY PageNumber";
+            cmd.CommandText = "SELECT Id, DocumentId, VersionId, PageNumber, FilePath, ThumbnailPath, ContentType, ExtractedAt, Hash, Role FROM DocumentImages WHERE DocumentId = $doc ORDER BY PageNumber";
             cmd.Parameters.AddWithValue("$doc", documentId.ToString());
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
@@ -93,7 +95,8 @@ namespace SalesForgeOCR.Data.Repositories
                     ThumbnailPath = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
                     ContentType = reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
                     ExtractedAt = reader.IsDBNull(7) ? DateTime.UtcNow : DateTime.Parse(reader.GetString(7)),
-                    Hash = reader.IsDBNull(8) ? string.Empty : reader.GetString(8)
+                    Hash = reader.IsDBNull(8) ? string.Empty : reader.GetString(8),
+                    Role = reader.IsDBNull(9) ? "Body" : reader.GetString(9)
                 });
             }
             return list;
@@ -131,6 +134,7 @@ namespace SalesForgeOCR.Data.Repositories
                 cmd.Parameters.AddWithValue("$thumb", image.ThumbnailPath ?? string.Empty);
                 cmd.Parameters.AddWithValue("$contentType", image.ContentType ?? string.Empty);
                 cmd.Parameters.AddWithValue("$hash", image.Hash ?? string.Empty);
+                if (cmd.CommandText.StartsWith("INSERT")) cmd.Parameters.AddWithValue("$role", image.Role);
                 await cmd.ExecuteNonQueryAsync(cancellationToken);
             }
             catch (Exception ex)

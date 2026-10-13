@@ -1,0 +1,58 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using PdfSharp.Drawing;
+using PdfSharp.Pdf.IO;
+
+namespace SalesForge.Pdf;
+
+public sealed class PdfFieldPlacement
+{
+    public int Page { get; set; } public int Row { get; set; } public int Column { get; set; }
+    public double X { get; set; } public double Y { get; set; } public double Width { get; set; } public double Height { get; set; } public double Scale { get; set; }
+}
+public sealed class PdfLayoutProfile
+{
+    public static HashSet<string> UsedKeys { get; } = new(StringComparer.Ordinal);
+    public List<PdfFieldPlacement> Fields { get; set; } = new();
+    public static string TemplateDirectory { get; set; } = Path.Combine(AppContext.BaseDirectory,"data","pdf-templates");
+    public static string Key(PdfFormDocument document)
+    {
+        var data=new StringBuilder();
+        data.AppendLine("SalesForge layout profile v4");
+        foreach(var sheet in document.Worksheets.Items)
+        {
+            data.AppendLine(sheet.Name);
+            foreach(var cell in sheet.Cells.Values.OrderBy(c=>c.RowNumber).ThenBy(c=>c.ColumnNumber))
+                if(!cell.IsDynamic && cell.GetString().Length>0)data.AppendLine($"{cell.RowNumber}:{cell.ColumnNumber}:{cell.GetString()}");
+            foreach(var image in sheet.Pictures)
+                data.AppendLine(Convert.ToHexString(SHA256.HashData(image.Bytes??File.ReadAllBytes(image.Path))));
+        }
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(data.ToString())));
+    }
+    internal static bool TryRender(PdfFormDocument model,string path)
+    {
+        var key=Key(model);var background=Path.Combine(TemplateDirectory,key+".pdf");var metadata=Path.Combine(TemplateDirectory,key+".json");
+        if(!File.Exists(background)||!File.Exists(metadata))return false;
+        UsedKeys.Add(key);
+        var profile=JsonSerializer.Deserialize<PdfLayoutProfile>(File.ReadAllText(metadata))??throw new InvalidDataException("Invalid PDF layout profile.");
+        using var document=PdfReader.Open(background,PdfDocumentOpenMode.Modify);
+        foreach(var group in profile.Fields.GroupBy(f=>f.Page))
+        {
+            using var graphics=XGraphics.FromPdfPage(document.Pages[group.Key-1],XGraphicsPdfPageOptions.Append);
+            foreach(var field in group)
+            {
+                var cell=model.Worksheet(1).Cell(field.Row,field.Column);
+                PdfFormPage.DrawText(graphics,cell,new XRect(field.X,field.Y,field.Width,field.Height),field.Scale);
+            }
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var temporary=path+"."+Guid.NewGuid().ToString("N")+".tmp";
+        try{document.Save(temporary);File.Move(temporary,path,true);}finally{if(File.Exists(temporary))File.Delete(temporary);}
+        return true;
+    }
+}
+public sealed class PdfDynamicValue(object? value)
+{
+    public override string ToString()=>Convert.ToString(value,System.Globalization.CultureInfo.CurrentCulture)??"";
+}

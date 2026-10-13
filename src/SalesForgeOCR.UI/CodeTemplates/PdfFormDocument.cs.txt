@@ -1,0 +1,356 @@
+using System.Globalization;
+using System.Drawing;
+using System.Text.RegularExpressions;
+using PdfSharp.Drawing;
+using PdfSharp.Pdf;
+
+namespace SalesForge.Pdf;
+
+// A PDF-native layout model. Addresses identify positions in a form grid; no workbook,
+// spreadsheet package, printer driver, or Office process is created.
+public sealed class PdfFormDocument : IDisposable
+{
+    public bool RequirePreservedLayout { get; set; }
+    public PdfFormPages Worksheets { get; } = new();
+    public PdfFormPage Worksheet(int index) => Worksheets.Items[index - 1];
+    public PdfFormPage AddWorksheet(string name) => Worksheets.Add(name);
+    public void SavePdf(string path)
+    {
+        if (PdfLayoutProfile.TryRender(this, path)) return;
+        if (RequirePreservedLayout) throw new InvalidOperationException("The PDF layout template is missing for this form. Reinstall SalesForge with its data/pdf-templates folder before generating documents.");
+        using var pdf = new PdfDocument();
+        pdf.Info.Creator = "SalesForge / PDFsharp";
+        foreach (var form in Worksheets.Items) form.Render(pdf);
+        if (pdf.PageCount == 0) throw new InvalidOperationException("The document contains no pages.");
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try { pdf.Save(temporary); File.Move(temporary, path, true); }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+    public void Dispose() { }
+}
+
+public sealed class PdfFormPages
+{
+    internal List<PdfFormPage> Items { get; } = new();
+    public PdfFormPage Add(string name) { var page = new PdfFormPage(name); Items.Add(page); return page; }
+}
+public enum PdfHorizontal { Left, Center, Right }
+public enum PdfVertical { Top, Center, Bottom }
+public enum PdfBorder { None, Thin, Thick }
+public enum PdfUnderline { None, Single }
+public enum PdfPaper { A4Paper }
+public static class PdfColor
+{
+    public static XColor Gray => XColors.Gray;
+    public static XColor LightGray => XColors.LightGray;
+    public static XColor Red => XColors.Red;
+    public static XColor Green => XColors.Green;
+    public static XColor Orange => XColors.Orange;
+    public static XColor DarkOrange => XColors.DarkOrange;
+    public static XColor Amber => XColor.FromArgb(255, 191, 0);
+}
+
+public sealed class PdfFormPage
+{
+    internal readonly Dictionary<(int row, int col), PdfFormCell> Cells = new();
+    internal readonly Dictionary<int, PdfGridRow> RowSizes = new();
+    internal readonly Dictionary<int, PdfGridColumn> ColumnSizes = new();
+    internal readonly List<PdfFormPicture> Pictures = new();
+    public string Name { get; }
+    public PdfFormStyle Style { get; } = new();
+    public PdfPageLayout PageSetup { get; } = new();
+    public PdfFormView SheetView { get; } = new();
+    public List<PdfFormRange> MergedRanges { get; } = new();
+    public PdfFormPage(string name) => Name = name;
+    public PdfFormPage SetShowGridLines(bool show) => this;
+    public PdfFormCell Cell(string address) { var (r, c) = Parse(address); return Cell(r, c); }
+    public PdfFormCell Cell(int row, int column)
+    {
+        if (!Cells.TryGetValue((row, column), out var cell)) Cells[(row, column)] = cell = new(this, row, column);
+        return cell;
+    }
+    public PdfFormRange Range(string address)
+    {
+        var parts = address.Split(':'); var (r, c) = Parse(parts[0]); var (er, ec) = Parse(parts[^1]);
+        return new(this, r, c, er, ec);
+    }
+    public PdfGridRow Row(int number)
+    {
+        if (!RowSizes.TryGetValue(number, out var row)) RowSizes[number] = row = new(number);
+        return row;
+    }
+    public PdfGridColumn Column(string name) => Column(Parse(name + "1").col);
+    public PdfGridColumn Column(int number)
+    {
+        if (!ColumnSizes.TryGetValue(number, out var column)) ColumnSizes[number] = column = new(number);
+        return column;
+    }
+    public PdfGridColumns Columns() => new(this);
+    public PdfGridRow? LastRowUsed() => Cells.Count == 0 ? null : Row(Cells.Keys.Max(k => k.row));
+    public PdfFormPicture AddPicture(string path)
+    {
+        var picture = new PdfFormPicture(path); Pictures.Add(picture); return picture;
+    }
+    public PdfFormPicture AddPicture(byte[] bytes) { var picture = new PdfFormPicture(bytes); Pictures.Add(picture); return picture; }
+    internal static (int row, int col) Parse(string value)
+    {
+        var match = Regex.Match(value.Replace("$", ""), "^([A-Za-z]+)([0-9]+)$");
+        if (!match.Success) throw new ArgumentException("Invalid form-grid address: " + value);
+        int column = 0;
+        foreach (char letter in match.Groups[1].Value.ToUpperInvariant()) column = column * 26 + letter - 'A' + 1;
+        return (int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture), column);
+    }
+    internal void Render(PdfDocument document)
+    {
+        var area = Range(PageSetup.PrintAreas.FirstOrDefault() ?? $"A1:{Address(Cells.Keys.Max(k => k.col))}{Cells.Keys.Max(k => k.row)}");
+        int first = area.StartRow, last = area.EndRow;
+        var breaks = PageSetup.Breaks.Where(b => b >= first && b < last).Distinct().Order().ToList();
+        if (breaks.Count == 0 && PageSetup.PagesTall > 1)
+            for (int i = 1; i < PageSetup.PagesTall; i++) breaks.Add(first - 1 + (last - first + 1) * i / PageSetup.PagesTall);
+        foreach (int end in breaks.Append(last))
+        {
+            RenderSegment(document, area.StartColumn, area.EndColumn, first, end);
+            first = end + 1;
+        }
+    }
+    private void RenderSegment(PdfDocument document, int firstColumn, int lastColumn, int firstRow, int lastRow)
+    {
+        var page = document.AddPage(); page.Width = XUnit.FromPoint(595.276); page.Height = XUnit.FromPoint(841.89);
+        using var graphics = XGraphics.FromPdfPage(page);
+        var widths = Enumerable.Range(firstColumn, lastColumn - firstColumn + 1).Select(c => Column(c).Width * 7.5 * .75).ToArray();
+        var heights = Enumerable.Range(firstRow, lastRow - firstRow + 1).Select(r => Row(r).Height).ToArray();
+        double availableWidth = page.Width.Point - 72 * (PageSetup.Margins.Left + PageSetup.Margins.Right);
+        double availableHeight = page.Height.Point - 72 * (PageSetup.Margins.Top + PageSetup.Margins.Bottom);
+        double scale = Math.Min(availableWidth / widths.Sum(), availableHeight / heights.Sum());
+        double left = PageSetup.Margins.Left * 72 + (PageSetup.CenterHorizontally ? (availableWidth - widths.Sum() * scale) / 2 : 0);
+        double top = PageSetup.Margins.Top * 72;
+        double X(int column) => left + widths.Take(column - firstColumn).Sum() * scale;
+        double Y(int row) => top + heights.Take(row - firstRow).Sum() * scale;
+        var rendered = new HashSet<(int, int)>();
+        foreach (var cell in Cells.Values.Where(c => c.RowNumber >= firstRow && c.RowNumber <= lastRow && c.ColumnNumber >= firstColumn && c.ColumnNumber <= lastColumn).OrderBy(c => c.RowNumber).ThenBy(c => c.ColumnNumber).ToList())
+        {
+            var merge = MergedRanges.FirstOrDefault(m => m.Contains(cell.RowNumber, cell.ColumnNumber));
+            int r = merge?.StartRow ?? cell.RowNumber, c = merge?.StartColumn ?? cell.ColumnNumber;
+            if (r < firstRow || !rendered.Add((r, c))) continue;
+            int er = Math.Min(merge?.EndRow ?? r, lastRow), ec = Math.Min(merge?.EndColumn ?? c, lastColumn);
+            var anchor = Cell(r, c);
+            var bounds = new XRect(X(c), Y(r), widths.Skip(c - firstColumn).Take(ec - c + 1).Sum() * scale, heights.Skip(r - firstRow).Take(er - r + 1).Sum() * scale);
+            if (anchor.Style.Fill.BackgroundColor is XColor fill) graphics.DrawRectangle(new XSolidBrush(fill), bounds);
+            DrawBorder(graphics, Cell(r, c).Style.Border.TopBorder, bounds.X, bounds.Y, bounds.Right, bounds.Y, scale);
+            DrawBorder(graphics, Cell(er, c).Style.Border.BottomBorder, bounds.X, bounds.Bottom, bounds.Right, bounds.Bottom, scale);
+            DrawBorder(graphics, Cell(r, c).Style.Border.LeftBorder, bounds.X, bounds.Y, bounds.X, bounds.Bottom, scale);
+            DrawBorder(graphics, Cell(r, ec).Style.Border.RightBorder, bounds.Right, bounds.Y, bounds.Right, bounds.Bottom, scale);
+            DrawText(graphics, anchor, bounds, scale);
+        }
+        foreach (var picture in Pictures.Where(p => p.Row >= firstRow && p.Row <= lastRow))
+        {
+            using var memory = picture.Bytes == null ? null : new MemoryStream(picture.Bytes);
+            using var image = memory == null ? XImage.FromFile(picture.Path) : XImage.FromStream(memory);
+            graphics.DrawImage(image, X(picture.Column) + picture.Offset.X * .75 * scale, Y(picture.Row) + picture.Offset.Y * .75 * scale, picture.Width * .75 * scale, picture.Height * .75 * scale);
+        }
+    }
+    private static void DrawBorder(XGraphics graphics, PdfBorder border, double x1, double y1, double x2, double y2, double scale)
+    {
+        if (border != PdfBorder.None) graphics.DrawLine(new XPen(XColors.Black, (border == PdfBorder.Thick ? 1.4 : .5) * scale), x1, y1, x2, y2);
+    }
+    internal static XFont Font(string name, double size, bool bold, bool italic, PdfUnderline underline = PdfUnderline.None)
+    {
+        using var probe = new System.Drawing.Font(name, 10);
+        return new XFont(probe.Name, Math.Max(1, size), (bold ? XFontStyleEx.Bold : XFontStyleEx.Regular) | (italic ? XFontStyleEx.Italic : 0) | (underline == PdfUnderline.Single ? XFontStyleEx.Underline : 0));
+    }
+    internal static void DrawText(XGraphics graphics, PdfFormCell cell, XRect bounds, double scale)
+    {
+        var style = cell.Style;
+        double padding = Math.Min(2 * scale, bounds.Width / 4), width = Math.Max(1, bounds.Width - padding * 2 - style.Alignment.Indent * 3 * scale);
+        var lines = new List<List<(string text, XFont font, XColor color)>> { new() };
+        double lineWidth = 0;
+        var runs = cell.RichText.Runs.Count > 0 ? cell.RichText.Runs : new List<PdfRichRun> { new(cell.RichText, cell.GetString()) };
+        foreach (var run in runs)
+        {
+            var font = Font(run.FontName ?? style.Font.FontName, (run.SizeOverride ?? style.Font.FontSize) * scale, run.BoldOverride ?? style.Font.Bold, run.ItalicOverride ?? style.Font.Italic, run.UnderlineOverride ?? style.Font.Underline);
+            foreach (var token in Regex.Split(run.Text.Replace("\r", ""), "(\\n|\\s+)").Where(t => t.Length > 0))
+            {
+                if (token.Contains('\n')) { lines.Add(new()); lineWidth = 0; continue; }
+                double measured = graphics.MeasureString(token, font).Width;
+                if (lineWidth > 0 && lineWidth + measured > width)
+                {
+                    lines.Add(new()); lineWidth = 0;
+                    if (string.IsNullOrWhiteSpace(token)) continue;
+                }
+                if (measured > width)
+                {
+                    foreach (char ch in token)
+                    {
+                        string part = ch.ToString(); double size = graphics.MeasureString(part, font).Width;
+                        if (lineWidth + size > width && lineWidth > 0) { lines.Add(new()); lineWidth = 0; }
+                        lines[^1].Add((part, font, run.ColorOverride ?? style.Font.FontColor)); lineWidth += size;
+                    }
+                }
+                else { lines[^1].Add((token, font, run.ColorOverride ?? style.Font.FontColor)); lineWidth += measured; }
+            }
+        }
+        if (lines.All(l => l.Count == 0)) return;
+        var lineHeights = lines.Select(line => line.Count == 0 ? style.Font.FontSize * scale * 1.15 : line.Max(t => t.font.Size) * 1.15).ToList();
+        double required = lineHeights.Sum(), shrink = Math.Min(1, Math.Max(.05, (bounds.Height - padding * 2) / Math.Max(1, required)));
+        double y = bounds.Y + padding;
+        if (style.Alignment.Vertical == PdfVertical.Center) y += Math.Max(0, (bounds.Height - padding * 2 - required * shrink) / 2);
+        if (style.Alignment.Vertical == PdfVertical.Bottom) y += Math.Max(0, bounds.Height - padding * 2 - required * shrink);
+        var state = graphics.Save(); graphics.IntersectClip(bounds);
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i].Select(t => (t.text, font: new XFont(t.font.FontFamily.Name, Math.Max(.5, t.font.Size * shrink), t.font.Style), t.color)).ToList();
+            double textWidth = line.Sum(t => graphics.MeasureString(t.text, t.font).Width);
+            double x = bounds.X + padding + style.Alignment.Indent * 3 * scale;
+            if (style.Alignment.Horizontal == PdfHorizontal.Center) x += Math.Max(0, (width - textWidth) / 2);
+            if (style.Alignment.Horizontal == PdfHorizontal.Right) x += Math.Max(0, width - textWidth);
+            foreach (var token in line)
+            {
+                graphics.DrawString(token.text, token.font, new XSolidBrush(token.color), new XPoint(x, y + lineHeights[i] * shrink * .82));
+                x += graphics.MeasureString(token.text, token.font).Width;
+            }
+            y += lineHeights[i] * shrink;
+        }
+        graphics.Restore(state);
+    }
+    private static string Address(int column)
+    {
+        string s = ""; for (; column > 0; column = (column - 1) / 26) s = (char)('A' + (column - 1) % 26) + s; return s;
+    }
+}
+
+public sealed class PdfFormCell
+{
+    public PdfFormPage Page { get; }
+    public int RowNumber { get; }
+    public int ColumnNumber { get; }
+    public object? Value { get; set; }
+    public bool IsDynamic => Value is PdfDynamicValue || RichText.HasFields;
+    public PdfFormStyle Style { get; }
+    public PdfRichText RichText { get; }
+    internal PdfFormCell(PdfFormPage page, int row, int col) { Page = page; RowNumber = row; ColumnNumber = col; Style = page.Style.Copy(); RichText = new(this); }
+    public PdfRichText GetRichText() => RichText;
+    public string GetString() => RichText.Runs.Count > 0 ? RichText.Text : Convert.ToString(Value, CultureInfo.CurrentCulture) ?? "";
+    public string GetFormattedString() => GetString();
+}
+public sealed class PdfFormRange
+{
+    private readonly PdfFormPage _page;
+    public int StartRow { get; } public int EndRow { get; } public int StartColumn { get; } public int EndColumn { get; }
+    public PdfFormStyle Style { get; }
+    public object? Value { get => FirstCell().Value; set { for (int r = StartRow; r <= EndRow; r++) for (int c = StartColumn; c <= EndColumn; c++) _page.Cell(r,c).Value = value; } }
+    public PdfFormRange(PdfFormPage page, int r, int c, int er, int ec)
+    {
+        _page = page; StartRow = r; StartColumn = c; EndRow = er; EndColumn = ec;
+        Style = new((key, value) =>
+        {
+            for (int row = r; row <= er; row++) for (int col = c; col <= ec; col++)
+            {
+                var style = page.Cell(row, col).Style;
+                if (key is "Border.OutsideBorder" or "Border.InsideBorder")
+                {
+                    var border = (PdfBorder)value!;
+                    bool outside = key == "Border.OutsideBorder";
+                    if (outside ? row == r : row > r) style.Border.TopBorder = border;
+                    if (outside ? row == er : row < er) style.Border.BottomBorder = border;
+                    if (outside ? col == c : col > c) style.Border.LeftBorder = border;
+                    if (outside ? col == ec : col < ec) style.Border.RightBorder = border;
+                }
+                else style.Set(key, value);
+            }
+        });
+    }
+    public bool Contains(int r, int c) => r >= StartRow && r <= EndRow && c >= StartColumn && c <= EndColumn;
+    public PdfFormRange Merge() { if (!_page.MergedRanges.Any(m => m.StartRow == StartRow && m.StartColumn == StartColumn && m.EndRow == EndRow && m.EndColumn == EndColumn)) _page.MergedRanges.Add(this); return this; }
+    public PdfFormCell FirstCell() => _page.Cell(StartRow, StartColumn);
+    public PdfGridRow FirstRow() => _page.Row(StartRow); public PdfGridRow LastRow() => _page.Row(EndRow);
+    public PdfGridColumn FirstColumn() => _page.Column(StartColumn); public PdfGridColumn LastColumn() => _page.Column(EndColumn);
+}
+public sealed class PdfGridRow(int number) { public double Height { get; set; } = 15; public int RowNumber() => number; }
+public sealed class PdfGridColumn(int number) { public double Width { get; set; } = 8.43; public int ColumnNumber() => number; }
+public sealed class PdfGridColumns(PdfFormPage page)
+{
+    public void AdjustToContents()
+    {
+        foreach (var group in page.Cells.Values.GroupBy(c => c.ColumnNumber))
+            page.Column(group.Key).Width = Math.Clamp(group.Max(c => c.GetString().Length) * .9 + 1, 3, 35);
+    }
+}
+public sealed class PdfFormView { public void FreezeRows(int count) { } }
+public sealed class PdfPageLayout
+{
+    public List<string> PrintAreas { get; } = new(); public List<int> Breaks { get; } = new();
+    public int PagesTall { get; set; } = 1; public int PagesWide { get; set; } = 1;
+    public PdfPaper PaperSize { get; set; } public bool CenterHorizontally { get; set; } public bool CenterVertically { get; set; }
+    public int HorizontalDpi { get; set; } = 600;
+    public PdfMargins Margins { get; } = new();
+    public void AddHorizontalPageBreak(int row) => Breaks.Add(row);
+}
+public sealed class PdfMargins { public double Left { get; set; } = .35; public double Right { get; set; } = .35; public double Top { get; set; } = .4; public double Bottom { get; set; } = .4; }
+public sealed class PdfFormPicture
+{
+    public string Path { get; } = ""; public byte[]? Bytes { get; } public int OriginalWidth { get; } public int OriginalHeight { get; }
+    public int Width { get; set; } public int Height { get; set; } public int Row { get; private set; } = 1; public int Column { get; private set; } = 1; public Point Offset { get; private set; }
+    public PdfFormPicture(string path) { Path = path; using var image = Image.FromFile(path); Width = OriginalWidth = image.Width; Height = OriginalHeight = image.Height; }
+    public PdfFormPicture(byte[] bytes) { Bytes = bytes; using var stream = new MemoryStream(bytes); using var image = Image.FromStream(stream); Width = OriginalWidth = image.Width; Height = OriginalHeight = image.Height; }
+    public PdfFormPicture MoveTo(PdfFormCell cell, Point offset = default) { Row = cell.RowNumber; Column = cell.ColumnNumber; Offset = offset; return this; }
+    public PdfFormPicture Scale(double scale) { Width = (int)(OriginalWidth * scale); Height = (int)(OriginalHeight * scale); return this; }
+}
+public sealed class PdfRichText(PdfFormCell cell)
+{
+    public bool HasFields { get; private set; }
+    public List<PdfRichRun> Runs { get; } = new(); public string Text => string.Concat(Runs.Select(r => r.Text));
+    public bool Bold { get => cell.Style.Font.Bold; set => cell.Style.Font.Bold = value; }
+    public PdfRichRun AddText(string text) { var run = new PdfRichRun(this, text); Runs.Add(run); return run; }
+    public PdfRichRun AddField(string text) { HasFields=true; return AddText(text); }
+}
+public sealed class PdfRichRun(PdfRichText parent, string text)
+{
+    public string Text { get; } = text; internal bool? BoldOverride, ItalicOverride; internal double? SizeOverride; internal XColor? ColorOverride; internal PdfUnderline? UnderlineOverride;
+    public string? FontName { get; set; }
+    public bool Bold { get => BoldOverride ?? false; set => BoldOverride = value; }
+    public bool Italic { get => ItalicOverride ?? false; set => ItalicOverride = value; }
+    public double FontSize { get => SizeOverride ?? 10; set => SizeOverride = value; }
+    public XColor FontColor { get => ColorOverride ?? XColors.Black; set => ColorOverride = value; }
+    public PdfUnderline Underline { get => UnderlineOverride ?? PdfUnderline.None; set => UnderlineOverride = value; }
+    public PdfRichRun AddText(string value) { var run = parent.AddText(value); run.BoldOverride = BoldOverride; run.ItalicOverride = ItalicOverride; run.UnderlineOverride = UnderlineOverride; return run; }
+}
+public sealed class PdfFormStyle
+{
+    private readonly Dictionary<string, object?> _values = new(); private readonly Action<string, object?>? _onSet;
+    public PdfStyleFont Font { get; } public PdfStyleAlignment Alignment { get; } public PdfStyleBorder Border { get; } public PdfStyleFill Fill { get; }
+    public PdfFormStyle(Action<string, object?>? onSet = null) { _onSet = onSet; Font = new(this); Alignment = new(this); Border = new(this); Fill = new(this); }
+    internal T Get<T>(string key, T fallback) => _values.TryGetValue(key, out var value) ? (T)value! : fallback;
+    internal void Set(string key, object? value) { _values[key] = value; _onSet?.Invoke(key, value); }
+    public PdfFormStyle Copy() { var style = new PdfFormStyle(); foreach (var pair in _values) style._values[pair.Key] = pair.Value; return style; }
+}
+public sealed class PdfStyleFont(PdfFormStyle s)
+{
+    public string FontName { get => s.Get("Font.FontName", "Arial"); set => s.Set("Font.FontName", value); }
+    public double FontSize { get => s.Get("Font.FontSize", 10d); set => s.Set("Font.FontSize", value); }
+    public bool Bold { get => s.Get("Font.Bold", false); set => s.Set("Font.Bold", value); }
+    public bool Italic { get => s.Get("Font.Italic", false); set => s.Set("Font.Italic", value); }
+    public XColor FontColor { get => s.Get("Font.FontColor", XColors.Black); set => s.Set("Font.FontColor", value); }
+    public PdfUnderline Underline { get => s.Get("Font.Underline", PdfUnderline.None); set => s.Set("Font.Underline", value); }
+}
+public sealed class PdfStyleAlignment(PdfFormStyle s)
+{
+    public PdfHorizontal Horizontal { get => s.Get("Alignment.Horizontal", PdfHorizontal.Left); set => s.Set("Alignment.Horizontal", value); }
+    public PdfVertical Vertical { get => s.Get("Alignment.Vertical", PdfVertical.Bottom); set => s.Set("Alignment.Vertical", value); }
+    public bool WrapText { get => s.Get("Alignment.WrapText", false); set => s.Set("Alignment.WrapText", value); }
+    public int Indent { get => s.Get("Alignment.Indent", 0); set => s.Set("Alignment.Indent", value); }
+}
+public sealed class PdfStyleBorder(PdfFormStyle s)
+{
+    public PdfBorder TopBorder { get => s.Get("Border.TopBorder", s.Get("Border.OutsideBorder", PdfBorder.None)); set => s.Set("Border.TopBorder", value); }
+    public PdfBorder BottomBorder { get => s.Get("Border.BottomBorder", s.Get("Border.OutsideBorder", PdfBorder.None)); set => s.Set("Border.BottomBorder", value); }
+    public PdfBorder LeftBorder { get => s.Get("Border.LeftBorder", s.Get("Border.OutsideBorder", PdfBorder.None)); set => s.Set("Border.LeftBorder", value); }
+    public PdfBorder RightBorder { get => s.Get("Border.RightBorder", s.Get("Border.OutsideBorder", PdfBorder.None)); set => s.Set("Border.RightBorder", value); }
+    public PdfBorder OutsideBorder { get => s.Get("Border.OutsideBorder", PdfBorder.None); set => s.Set("Border.OutsideBorder", value); }
+    public PdfBorder InsideBorder { get => s.Get("Border.InsideBorder", PdfBorder.None); set => s.Set("Border.InsideBorder", value); }
+}
+public sealed class PdfStyleFill(PdfFormStyle s)
+{
+    public XColor? BackgroundColor { get => s.Get<XColor?>("Fill.BackgroundColor", null); set => s.Set("Fill.BackgroundColor", value); }
+}
+

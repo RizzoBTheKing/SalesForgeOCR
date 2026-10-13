@@ -23,4 +23,4 @@
 <ItemGroup><ProjectReference Include="../SalesForgeOCR.DocumentProcessing/SalesForgeOCR.DocumentProcessing.csproj" />
 <ProjectReference Include="../SalesForgeOCR.Search/SalesForgeOCR.Search.csproj" />
 <ProjectReference Include="../SalesForgeOCR.Data/SalesForgeOCR.Data.csproj" /></ItemGroup>
-<ItemGroup><Content Include="tessdata/LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /><Content Include="tessdata/eng.traineddata" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /><None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" /></ItemGroup></Project>
+<ItemGroup><Content Include="tessdata/LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /><Content Include="tessdata/eng.traineddata" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /><None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" /></ItemGroup><ItemGroup><Content Include="CodeTemplates/*.cs.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup></Project>

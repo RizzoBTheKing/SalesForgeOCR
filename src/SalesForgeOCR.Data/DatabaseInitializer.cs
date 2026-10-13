@@ -186,6 +186,13 @@ COMMIT;";
                 migrate.CommandText = "ALTER TABLE DocumentVersions ADD COLUMN StoragePath TEXT";
                 await migrate.ExecuteNonQueryAsync();
             }
+            using var imageColumns=conn.CreateCommand();
+            imageColumns.CommandText="SELECT COUNT(*) FROM pragma_table_info('DocumentImages') WHERE name='Role'";
+            if(Convert.ToInt64(await imageColumns.ExecuteScalarAsync())==0)
+            {
+                using var migrateImages=conn.CreateCommand();migrateImages.CommandText="ALTER TABLE DocumentImages ADD COLUMN Role TEXT NOT NULL DEFAULT 'Body'";
+                await migrateImages.ExecuteNonQueryAsync();
+            }
         }
     }
 }

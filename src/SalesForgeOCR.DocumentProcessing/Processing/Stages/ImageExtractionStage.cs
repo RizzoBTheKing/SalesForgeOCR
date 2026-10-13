@@ -16,16 +16,16 @@ namespace SalesForgeOCR.DocumentProcessing.Processing.Stages
 
         public override async Task<ProcessingResult> ExecuteAsync(ProcessingContext context, CancellationToken cancellationToken = default)
         {
-            var images = await _imageExtractor.ExtractImagesAsync(context.Version.StoragePath ?? context.Version.FileName, cancellationToken);
-            var page = 1;
+            var images = await _imageExtractor.ExtractImageDetailsAsync(context.RenderedPdfPath ?? context.Version.StoragePath ?? context.Version.FileName, cancellationToken);
             foreach (var path in images)
             {
                 context.Images.Add(new SalesForgeOCR.Core.Entities.DocumentImage
                 {
                     DocumentId = context.Document.Id,
                     VersionId = context.Version.Id,
-                    PageNumber = page++,
-                    FilePath = path
+                    PageNumber = path.PageNumber,
+                    Role = path.Role,
+                    FilePath = path.FilePath
                 });
             }
             return ProcessingResult.Ok();

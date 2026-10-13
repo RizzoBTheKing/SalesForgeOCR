@@ -6,6 +6,7 @@ namespace SalesForgeOCR.DocumentProcessing.Processing
 {
     public class ProcessingContext
     {
+        public string? RenderedPdfPath { get; set; }
         public Document Document { get; }
         public DocumentVersion Version { get; }
         public List<DocumentText> ExtractedText { get; } = new List<DocumentText>();

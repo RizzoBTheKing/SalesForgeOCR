@@ -26,6 +26,7 @@ public class OcrEngine : IOcrEngine
         if (!File.Exists(path)) throw new FileNotFoundException("Document file does not exist.", path);
         var ext = Path.GetExtension(path).ToLowerInvariant();
         if (ext is ".txt" or ".csv") return [File.ReadAllText(path)];
+        if (ext is ".docx" or ".xlsx") return OfficeDocuments.ReadPages(path, ct).ToList();
         if (ext == ".pdf")
         {
             using var pdf = PdfDocument.Open(path);

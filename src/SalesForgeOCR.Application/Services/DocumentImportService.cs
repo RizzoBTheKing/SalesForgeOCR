@@ -16,7 +16,7 @@ public class DocumentImportService
     {
         var source = new FileInfo(path);
         var extension = source.Extension.ToLowerInvariant();
-        if (extension is not (".pdf" or ".png" or ".jpg" or ".jpeg" or ".tif" or ".tiff" or ".bmp" or ".txt" or ".csv")) throw new NotSupportedException("Unsupported document type.");
+        if (extension is not (".doc" or ".docx" or ".xlsx" or ".pdf" or ".png" or ".jpg" or ".jpeg" or ".tif" or ".tiff" or ".bmp" or ".txt" or ".csv")) throw new NotSupportedException("Unsupported document type.");
         if (!source.Exists || source.Length == 0) throw new InvalidOperationException("Document is missing or empty.");
         if (source.Length > 100 * 1024 * 1024) throw new InvalidOperationException("Document exceeds the 100 MB import limit.");
         var folder = Path.Combine(_storageDirectory, Guid.NewGuid().ToString("N"));

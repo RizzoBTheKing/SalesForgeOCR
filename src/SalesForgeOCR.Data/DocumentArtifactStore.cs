@@ -47,7 +47,7 @@ public class DocumentArtifactStore : IDocumentArtifactStore
         }
         foreach (var i in images)
         {
-            await Execute("INSERT INTO DocumentImages (Id,DocumentId,VersionId,PageNumber,FilePath,ThumbnailPath,ContentType,ExtractedAt,Hash) VALUES ($id,$doc,$ver,$page,$path,$thumb,$type,$now,$hash)", ("$id",i.Id.ToString()), ("$doc",documentId.ToString()), ("$ver",versionId.ToString()), ("$page",i.PageNumber), ("$path",i.FilePath), ("$thumb",i.ThumbnailPath), ("$type",i.ContentType), ("$now",i.ExtractedAt.ToString("o")), ("$hash",i.Hash));
+            await Execute("INSERT INTO DocumentImages (Id,DocumentId,VersionId,PageNumber,FilePath,ThumbnailPath,ContentType,ExtractedAt,Hash,Role) VALUES ($id,$doc,$ver,$page,$path,$thumb,$type,$now,$hash,$role)", ("$id",i.Id.ToString()), ("$doc",documentId.ToString()), ("$ver",versionId.ToString()), ("$page",i.PageNumber), ("$path",i.FilePath), ("$thumb",i.ThumbnailPath), ("$type",i.ContentType), ("$now",i.ExtractedAt.ToString("o")), ("$hash",i.Hash), ("$role",i.Role));
             await Index(i.Id,"Image",Path.GetFileName(i.FilePath),0.2);
         }
         foreach (var t in tables)
